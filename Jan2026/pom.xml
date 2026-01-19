@@ -3,4 +3,11 @@
   <groupId>Jan2026</groupId>
   <artifactId>Jan2026</artifactId>
   <version>0.0.1-SNAPSHOT</version>
+  <!-- Source: https://mvnrepository.com/artifact/org.seleniumhq.selenium/selenium-java -->
+<dependency>
+    <groupId>org.seleniumhq.selenium</groupId>
+    <artifactId>selenium-java</artifactId>
+    <version>4.39.0</version>
+    <scope>compile</scope>
+</dependency>
 </project>
