@@ -1,5 +1,7 @@
 package pac6;
 
+import java.util.Arrays;
+
 public class TC024_Arrays {
 
 	
