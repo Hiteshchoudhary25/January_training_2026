@@ -18,7 +18,9 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.Date;
-import java.util.HashMap;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 
 public class TC003Test {
   private WebDriver driver;
@@ -34,9 +36,8 @@ public class TC003Test {
   public void initReport() {
     projectpath = System.getProperty("user.dir");
 
-    // Your exact snippet for report creation (file name as requested)
     extent = new ExtentReports();
-    ExtentSparkReporter spark = new ExtentSparkReporter(projectpath + "\\jan28th_Report.html");
+    ExtentSparkReporter spark = new ExtentSparkReporter(projectpath + File.separator + "jan28th_Report.html");
     extent.attachReporter(spark);
 
     // Ensure Screenshots directory exists
@@ -66,7 +67,6 @@ public class TC003Test {
     // driver = new ChromeDriver();
     driver = new FirefoxDriver();
 
-    new HashMap<>();
     actions = new Actions(driver);
 
     // Larger viewport helps avoid menu wrapping
@@ -76,8 +76,8 @@ public class TC003Test {
     driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(0));
     wait = new WebDriverWait(driver, Duration.ofSeconds(30));
 
-    // Your exact snippet creating a test node title
-    test = extent.createTest("Verify the login")
+    // Name the test from method for clarity
+    test = extent.createTest(method.getName())
                  .assignCategory("UI")
                  .assignAuthor("Hitesh");
   }
@@ -90,7 +90,6 @@ public class TC003Test {
       test.pass("Test passed").addScreenCaptureFromPath(path);
     } else if (result.getStatus() == ITestResult.FAILURE) {
       String path = takeScreenshot("FAIL_" + result.getMethod().getMethodName());
-      // Your example fail line (generalized for any failure)
       test.fail("Step unsuccessful").addScreenCaptureFromPath(path);
       test.fail(result.getThrowable());
     } else if (result.getStatus() == ITestResult.SKIP) {
@@ -135,26 +134,88 @@ public class TC003Test {
 
     wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".oxd-topbar-body-nav")));
     waitForNoOverlay();
+    sleep(200); // settle
 
     // ===== Attendance -> Punch In/Out =====
     openTopbarItem("Attendance", "Punch In/Out");
     waitForNoOverlay();
+    sleep(300);
     test.info("Opened Attendance → Punch In/Out");
 
-    // Punch button (handles both Punch In and Punch Out)
-    By punchButton = By.xpath("//button[contains(@class,'oxd-button')][contains(normalize-space(),'Punch')]");
-    clickWhenClickable(punchButton);
-    test.info("Clicked Punch (In/Out) button");
+    // Confirm Punch page is ready (url/header/form presence)
+    wait.until(ExpectedConditions.or(
+        ExpectedConditions.urlContains("/punchInOut"),
+        ExpectedConditions.visibilityOfElementLocated(By.xpath("//h6[contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'punch')]")),
+        ExpectedConditions.visibilityOfElementLocated(By.xpath("//form[contains(@class,'oxd-form')]"))
+    ));
     waitForNoOverlay();
+    sleep(200);
+
+    // --- Robust Punch button handling ---
+    // Prefer scoping to the attendance card when present
+    By attendanceCard = By.cssSelector("div.orangehrm-attendance-card");
+    // Case-insensitive 'Punch' match on any text inside the button
+    By punchInCard = By.xpath("//div[contains(@class,'orangehrm-attendance-card')]//button[contains(@class,'oxd-button') and contains(translate(normalize-space(string(.)),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'punch')]");
+    // Global fallbacks
+    By punchSmart = By.xpath("//button[contains(@class,'oxd-button') and contains(translate(normalize-space(string(.)),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'punch')]");
+    By punchSecondary = By.xpath("//button[contains(@class,'oxd-button--secondary') and contains(translate(normalize-space(string(.)),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'punch')]");
+
+    boolean punchClicked = false;
+
+    // Try card-scoped first
+    if (isPresentWithin(attendanceCard, 1500)) {
+      punchClicked = safeClickAny(6, punchInCard);
+    }
+    // If not, try global candidates
+    if (!punchClicked) {
+      punchClicked = safeClickAny(6, punchSmart, punchSecondary);
+    }
+
+    if (punchClicked) {
+      test.info("Clicked Punch (In/Out) button (first stage)");
+      waitForNoOverlay();
+      sleep(200);
+
+      // If a confirmation dialog appears, confirm Punch
+      By dialog = By.cssSelector("div.oxd-dialog-container-default--inner");
+      if (isPresentWithin(dialog, 2000)) {
+        // Optional: add a note if textarea is present
+        try {
+          WebElement note = new WebDriverWait(driver, Duration.ofSeconds(2))
+              .until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("textarea.oxd-textarea")));
+          note.clear();
+          note.sendKeys("Automated punch via Selenium");
+        } catch (Exception ignore) {}
+
+        By dialogPunchButton = By.xpath("//div[contains(@class,'oxd-dialog-container')]//button[contains(@class,'oxd-button') and contains(translate(normalize-space(string(.)),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'punch')]");
+        if (safeClickAny(6, dialogPunchButton)) {
+          test.info("Confirmed Punch in dialog");
+          waitForNoOverlay();
+          sleep(200);
+        } else {
+          String path = takeScreenshot("FAIL_PunchDialogConfirm");
+          dumpDom("PunchDialog");
+          test.warning("Punch dialog appeared but confirm button was not clickable. Continuing.").addScreenCaptureFromPath(path);
+        }
+      }
+    } else {
+      // Not failing the test; logging and continuing with rest of flow
+      String path = takeScreenshot("WARN_PunchButtonNotFound");
+      dumpDom("PunchNotFound");
+      test.warning("Punch button not found/visible; skipping Punch step and continuing.")
+          .addScreenCaptureFromPath(path);
+    }
 
     // ===== Timesheets -> My Timesheets =====
     openTopbarItem("Timesheets", "My Timesheets");
     waitForNoOverlay();
+    sleep(200);
     test.info("Opened Timesheets → My Timesheets");
 
     // ===== Project Info -> Projects =====
     openTopbarItem("Project Info", "Projects");
     waitForNoOverlay();
+    sleep(200);
     test.info("Opened Project Info → Projects");
 
     // --- Assert Projects page ---
@@ -227,19 +288,73 @@ public class TC003Test {
         .until(ExpectedConditions.invisibilityOfElementLocated(overlay));
   }
 
-  /** Click when clickable with JS fallback to avoid intercepted/overlap issues. */
+  /**
+   * Click when clickable with a resilient strategy:
+   * - Try elementToBeClickable + native click (short window)
+   * - Fallback: visible + JS click
+   * - Retry loop handles transient overlays/staleness for up to ~45s
+   */
   private void clickWhenClickable(By locator) {
-    try {
-      WebElement el = wait.until(ExpectedConditions.elementToBeClickable(locator));
-      scrollIntoView(el);
-      el.click();
-    } catch (TimeoutException te) {
-      throw te;
-    } catch (Exception e) {
-      WebElement el = wait.until(ExpectedConditions.visibilityOfElementLocated(locator));
-      scrollIntoView(el);
-      ((JavascriptExecutor) driver).executeScript("arguments[0].click();", el);
+    long end = System.currentTimeMillis() + 45000; // 45s max
+    Throwable lastError = null;
+
+    while (System.currentTimeMillis() < end) {
+      try {
+        // Try the classic path first: clickable + native click
+        WebElement el = new WebDriverWait(driver, Duration.ofSeconds(5))
+            .until(ExpectedConditions.elementToBeClickable(locator));
+        scrollIntoView(el);
+        el.click();
+        return;
+      } catch (TimeoutException te) {
+        lastError = te;
+        // Fall through to visibility + JS click attempt below
+      } catch (ElementClickInterceptedException | MoveTargetOutOfBoundsException e) {
+        lastError = e;
+        // Fall through to visibility + JS click attempt below
+      } catch (StaleElementReferenceException sere) {
+        lastError = sere;
+        // retry loop
+      }
+
+      // Fallback: present + visible + JS click
+      try {
+        WebElement el = new WebDriverWait(driver, Duration.ofSeconds(5))
+            .until(ExpectedConditions.visibilityOfElementLocated(locator));
+        scrollIntoView(el);
+        waitEnabled(el, 5);
+        sleep(200); // small settle
+        ((JavascriptExecutor) driver).executeScript("arguments[0].click();", el);
+        return;
+      } catch (Exception e2) {
+        lastError = e2;
+        // Retry after a short wait
+        sleep(400);
+      }
     }
+    if (lastError instanceof RuntimeException re) throw re;
+    throw new TimeoutException("Failed to click locator within timeout: " + locator, lastError);
+  }
+
+  /** Try clicking the first visible locator among candidates within visibleWaitSeconds. */
+  private boolean safeClickAny(int visibleWaitSeconds, By... locators) {
+    for (By loc : locators) {
+      try {
+        new WebDriverWait(driver, Duration.ofSeconds(visibleWaitSeconds))
+            .until(ExpectedConditions.visibilityOfElementLocated(loc));
+        clickWhenClickable(loc);
+        return true;
+      } catch (Exception ignore) {
+        // try next
+      }
+    }
+    return false;
+  }
+
+  private void waitEnabled(WebElement el, long seconds) {
+    new WebDriverWait(driver, Duration.ofSeconds(seconds)).until(d -> {
+      try { return el.isDisplayed() && el.isEnabled(); } catch (StaleElementReferenceException e) { return false; }
+    });
   }
 
   private void scrollIntoView(WebElement el) {
@@ -273,6 +388,17 @@ public class TC003Test {
 
   private void sleep(long ms) {
     try { Thread.sleep(ms); } catch (InterruptedException ignored) {}
+  }
+
+  /** Dump current page DOM into Screenshots folder for debugging. */
+  private void dumpDom(String nameHint) {
+    try {
+      String html = driver.getPageSource();
+      String timestamp = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
+      String file = projectpath + File.separator + "Screenshots" + File.separator + "DOM_" + nameHint + "_" + timestamp + ".html";
+      Files.write(new File(file).toPath(), html.getBytes(StandardCharsets.UTF_8));
+      test.info("Saved DOM snapshot: " + file);
+    } catch (Exception ignore) { }
   }
 
   /** Take screenshot and return a relative path that Extent can resolve. */

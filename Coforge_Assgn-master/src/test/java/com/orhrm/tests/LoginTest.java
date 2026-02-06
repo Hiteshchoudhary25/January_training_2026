@@ -19,14 +19,12 @@ import java.util.Map;
 public class LoginTest {
   private WebDriver driver;
   private WebDriverWait wait;
-  private Map<String, Object> vars;
-
   @BeforeMethod
   public void setUp() {
     driver = new FirefoxDriver();
     driver.manage().window().setSize(new Dimension(1280, 800));
     wait = new WebDriverWait(driver, Duration.ofSeconds(15));
-    vars = new HashMap<>();
+    new HashMap<>();
   }
 
   @AfterMethod
@@ -37,7 +35,7 @@ public class LoginTest {
   }
 
   @Test
-  public void LoginTest() {
+  public LoginTest() {
     driver.get("https://opensource-demo.orangehrmlive.com/web/index.php/auth/login");
 
     WebElement username = wait.until(ExpectedConditions.visibilityOfElementLocated(By.name("username")));

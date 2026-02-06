@@ -55,6 +55,12 @@
       <artifactId>extentreports</artifactId>
       <version>${extentreports.version}</version>
     </dependency>
+    
+    <dependency>
+      <groupId>io.appium</groupId>
+      <artifactId>java-client</artifactId>
+      <version>10.0.0</version>
+    </dependency>
 
     <!-- Apache Commons IO for FileUtils (screenshots) -->
     <dependency>
